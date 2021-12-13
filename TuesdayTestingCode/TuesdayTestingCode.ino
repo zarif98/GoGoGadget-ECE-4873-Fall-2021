@@ -8,11 +8,12 @@
 //
 //==================================
 
-
 #include <Wire.h>
 #include <SPI.h>
 #include <Adafruit_LSM9DS1.h>
 #include <Adafruit_Sensor.h>  // not used in this demo but required!
+
+float sensorState;
 
 unsigned long time;
 long deltaTime = 0;
@@ -20,7 +21,10 @@ float rollFilteredOld = 0.0f;
 float pitchFilteredOld = 0.0f;
 float roll = 0.0f;
 float pitch = 0.0f;
+#define VIBRATION_PIN A1
+unsigned int condition;
 
+const int RESET_PIN = 2;
 
 // i2c
 Adafruit_LSM9DS1 lsm = Adafruit_LSM9DS1();
@@ -34,6 +38,9 @@ Adafruit_LSM9DS1 lsm = Adafruit_LSM9DS1();
 //Adafruit_LSM9DS1 lsm = Adafruit_LSM9DS1(LSM9DS1_SCK, LSM9DS1_MISO, LSM9DS1_MOSI, LSM9DS1_XGCS, LSM9DS1_MCS);
 // Or hardware SPI! In this case, only CS pins are passed in
 //Adafruit_LSM9DS1 lsm = Adafruit_LSM9DS1(LSM9DS1_XGCS, LSM9DS1_MCS);
+
+  bool vibrate = false;
+  bool angles = false;
 
 
 void setupSensor()
@@ -78,6 +85,12 @@ void setup()
   // helper to just set the default scaling we want, see above!
   setupSensor();
   pinMode(7, OUTPUT);
+  digitalWrite(7, LOW); // This turns on the Mower
+  digitalWrite(RESET_PIN, HIGH);
+  pinMode(RESET_PIN, OUTPUT);
+  pinMode(4, OUTPUT); // Blue light
+  pinMode(6, OUTPUT); // Clear light
+  pinMode(2, OUTPUT); // Green light
 }
 
 void loop() 
@@ -89,40 +102,52 @@ void loop()
 
   lsm.getEvent(&a, &m, &g, &temp); 
 
-  int heading_in_degrees = 90 - 180*atan2(m.magnetic.y,m.magnetic.x)/PI;
-
-
-  calculateEulerAngles(a.acceleration.x, a.acceleration.y, 
+  angles = calculateEulerAngles(a.acceleration.x, a.acceleration.y, 
                    a.acceleration.z, g.gyro.x, g.gyro.y, g.gyro.z);
+
+  vibrate = readVibration();
+  if (vibrate == true) {
+    Serial.println("Vibrating");
+    //digitalWrite(7, HIGH);
+    digitalWrite(4, HIGH);
+    digitalWrite(2, LOW);
+    
+  }
+  if (angles == true) {
+    Serial.println("Angles are off");
+    digitalWrite(7, HIGH);
+    digitalWrite(6, HIGH);
+    digitalWrite(2, LOW);
+  }
 
   Serial.println();
 }
 
-void printOrientation(float x, float y, float z)
-{
-  float pitch, roll;
+//void printOrientation(float x, float y, float z)
+//{
+//  float pitch, roll;
+//
+//  pitch = atan2(x, sqrt(y * y) + (z * z));
+//  roll = atan2(y, sqrt(x * x) + (z * z));
+//  pitch *= 180.0 / M_PI;
+//  roll *= 180.0 / M_PI;
+//
+//  if(pitch > 45 || roll > 45) {
+//    digitalWrite(7, HIGH); 
+//  }
+//  else {
+//    digitalWrite(7, LOW);
+//  }
+//
+//  Serial.print("Pitch: ");
+//  Serial.print(pitch, 2);
+//  Serial.println("°");
+//  Serial.print("Roll ");
+//  Serial.print(roll, 2);
+//  Serial.println("°");
+//}
 
-  pitch = atan2(x, sqrt(y * y) + (z * z));
-  roll = atan2(y, sqrt(x * x) + (z * z));
-  pitch *= 180.0 / M_PI;
-  roll *= 180.0 / M_PI;
-
-  if(pitch > 45 || roll > 45) {
-    digitalWrite(7, LOW); 
-  }
-  else {
-    digitalWrite(7, HIGH);
-  }
-
-  Serial.print("Pitch: ");
-  Serial.print(pitch, 2);
-  Serial.println("°");
-  Serial.print("Roll ");
-  Serial.print(roll, 2);
-  Serial.println("°");
-}
-
-void calculateEulerAngles(float ax, float ay, float az, float gx, float gy, float gz) {
+boolean calculateEulerAngles(float ax, float ay, float az, float gx, float gy, float gz) {
   // Measured angle by the accelerometer
   float pitchMeasured, rollMeasured;
   float EARTH_GRAVITY = 9.80665f;
@@ -142,14 +167,6 @@ void calculateEulerAngles(float ax, float ay, float az, float gx, float gy, floa
   pitch = 0.95f * (pitch - gy * difference) + 0.05f * pitchMeasured;
 
 
-  if(abs(pitch) > 45 || abs(roll) > 45) {
-    digitalWrite(7, HIGH); 
-  }
-  else {
-    digitalWrite(7, LOW);
-  }
-
-  
   Serial.print("Pitch: ");
   Serial.print(pitch, 2);
   Serial.println("°");
@@ -157,5 +174,32 @@ void calculateEulerAngles(float ax, float ay, float az, float gx, float gy, floa
   Serial.print(roll, 2);
   Serial.println("°"); 
 
+
+  if(abs(pitch) > 45 || abs(roll) > 45) {
+    //Serial.println(true);
+    return true;
+    //digitalWrite(7, HIGH); 
+  }
+  else {
+    //digitalWrite(7, LOW);
+    //Serial.println(false);
+    return false;
+  }
+
   
   }
+boolean readVibration()
+{
+    sensorState= analogRead(VIBRATION_PIN);
+  if (sensorState > 5) {
+   Serial.println(sensorState);
+  }
+  if(sensorState > 150.0f) {
+      digitalWrite(7, HIGH); // This turns off the mower
+      Serial.println("Turned off relay");
+      return true;
+   }
+   return false;
+
+    // sensorState;
+}
